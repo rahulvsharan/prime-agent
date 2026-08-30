@@ -6,10 +6,10 @@
 	"main": "dist/index.js",
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "tsgo -p tsconfig.build.json",
-		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"test": "node --test --import tsx test/*.test.ts",
-		"prepublishOnly": "npm run clean && npm run build"
+		"build": "bunx tsgo -p tsconfig.build.json",
+		"dev": "bunx tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "bun test test/*.test.ts",
+		"prepublishOnly": "bun run clean && bun run build"
 	},
 	"files": [
 		"dist/**/*",
@@ -32,7 +32,7 @@
 		"directory": "packages/tui"
 	},
 	"engines": {
-		"node": ">=20.0.0"
+		"bun": ">=1.2.0"
 	},
 	"types": "./dist/index.d.ts",
 	"dependencies": {

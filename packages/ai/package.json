@@ -64,12 +64,12 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"generate-models": "npx tsx scripts/generate-models.ts",
-		"build": "npm run generate-models && tsgo -p tsconfig.build.json",
-		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"dev:tsc": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"test": "vitest --run",
-		"prepublishOnly": "npm run clean && npm run build"
+		"generate-models": "bun scripts/generate-models.ts",
+		"build": "bun run generate-models && bunx tsgo -p tsconfig.build.json",
+		"dev": "bunx tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"dev:tsc": "bunx tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "bunx vitest --run",
+		"prepublishOnly": "bun run clean && bun run build"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.91.1",
@@ -82,7 +82,9 @@
 		"partial-json": "^0.1.7",
 		"proxy-agent": "^6.5.0",
 		"undici": "^7.29.0",
-		"zod-to-json-schema": "^3.24.6"
+		"zod-to-json-schema": "^3.24.6",
+		"@smithy/types": "^4.16.1",
+		"@smithy/node-http-handler": "^4.9.11"
 	},
 	"keywords": [
 		"ai",
@@ -102,7 +104,7 @@
 		"directory": "packages/ai"
 	},
 	"engines": {
-		"node": ">=20.0.0"
+		"bun": ">=1.2.0"
 	},
 	"devDependencies": {
 		"@types/node": "^24.3.0",

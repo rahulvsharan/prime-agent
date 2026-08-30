@@ -72,7 +72,7 @@ jobs:
             build_ref="$REF_NAME"
             publish_production=true
           else
-            production_version=$(node -p "require('./package.json').version")
+            production_version=$(bun -p "require('./package.json').version")
             build_ref="$GITHUB_SHA_VALUE"
             beta_version="${production_version}-beta.${RUN_NUMBER}.${RUN_ATTEMPT}.${GITHUB_SHA_VALUE::7}"
             publish_beta=true
@@ -80,7 +80,7 @@ jobs:
             previous_version=
             if [ -n "$BEFORE_SHA" ] && ! printf '%s\n' "$BEFORE_SHA" | grep -Eq '^0+$' && git cat-file -e "${BEFORE_SHA}:package.json"; then
               git show "${BEFORE_SHA}:package.json" > /tmp/previous-package.json
-              previous_version=$(node -p "require('/tmp/previous-package.json').version")
+              previous_version=$(bun -p "require('/tmp/previous-package.json').version")
             fi
 
             if [ -z "$previous_version" ] || [ "$production_version" != "$previous_version" ]; then
@@ -133,20 +133,19 @@ jobs:
           ref: ${{ env.BUILD_REF }}
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          bun-version: 1.4.0
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: bun run build
 
       - name: Check
-        run: npm run check
+        run: bun run check
 
       - name: Pack production release
         if: env.PUBLISH_PRODUCTION == 'true'
@@ -154,7 +153,7 @@ jobs:
           PRIME_AGENT_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
           test -n "$PRIME_AGENT_DOWNLOAD_BASE_URL"
-          npm run release:pack -- \
+          bun run release:pack -- \
             --channel stable \
             --version "$PRODUCTION_VERSION" \
             --base-url "$PRIME_AGENT_DOWNLOAD_BASE_URL" \
@@ -166,7 +165,7 @@ jobs:
           PRIME_AGENT_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
           test -n "$PRIME_AGENT_DOWNLOAD_BASE_URL"
-          npm run release:pack -- \
+          bun run release:pack -- \
             --channel beta \
             --version "$BETA_VERSION" \
             --base-url "$PRIME_AGENT_DOWNLOAD_BASE_URL" \
@@ -232,7 +231,7 @@ jobs:
           export INSTALL_BASE_URL
           test -n "$INSTALL_BASE_URL"
 
-          node - <<'NODE'
+          bun - <<'NODE'
           const fs = require("node:fs");
           const baseUrl = process.env.INSTALL_BASE_URL;
           if (!baseUrl) throw new Error("INSTALL_BASE_URL is required");

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Bundles the compiled CLI entry (dist/cli.js) into dist/bundle/ with esbuild.
  *

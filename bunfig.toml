@@ -1,0 +1,8 @@
+[install]
+# Bun equivalent of .npmrc min-release-age enforcement is via Dependabot cooldown
+# and manual audit. No Bun-native min-release-age yet.
+# Keep lockfile deterministic; CI uses --frozen-lockfile.
+frozenLockfile = false
+
+[install.cache]
+# use default cache dir (~/.bun/install/cache)

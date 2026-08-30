@@ -1,7 +1,9 @@
-// Dependency-free and Node-20-safe so it can never crash on the versions it rejects.
+// Dependency-free and Bun-safe so it can never crash on the versions it rejects.
 
-const MIN_NODE_VERSION_PARTS = [22, 8, 0] as const;
-export const MIN_NODE_VERSION = MIN_NODE_VERSION_PARTS.join(".");
+const MIN_BUN_VERSION_PARTS = [1, 2, 0] as const;
+export const MIN_BUN_VERSION = MIN_BUN_VERSION_PARTS.join(".");
+// Keep for backward compat; new code should use MIN_BUN_VERSION
+export const MIN_NODE_VERSION = "22.8.0";
 
 export interface NodeVersionGuardIO {
 	version: string;
@@ -9,12 +11,12 @@ export interface NodeVersionGuardIO {
 	exit: (code: number) => void;
 }
 
-interface ParsedNodeVersion {
+interface ParsedVersion {
 	parts: readonly [number, number, number];
 	prerelease: boolean;
 }
 
-function parseVersion(version: string): ParsedNodeVersion | undefined {
+function parseVersion(version: string): ParsedVersion | undefined {
 	const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
 	if (!match) {
 		return undefined;
@@ -26,10 +28,10 @@ function parseVersion(version: string): ParsedNodeVersion | undefined {
 	};
 }
 
-function isSupportedNodeVersion(version: ParsedNodeVersion): boolean {
-	for (let index = 0; index < MIN_NODE_VERSION_PARTS.length; index++) {
+function isSupportedVersion(version: ParsedVersion, minParts: readonly number[]): boolean {
+	for (let index = 0; index < minParts.length; index++) {
 		const part = version.parts[index]!;
-		const minimumPart = MIN_NODE_VERSION_PARTS[index]!;
+		const minimumPart = minParts[index]!;
 		if (part !== minimumPart) {
 			return part > minimumPart;
 		}
@@ -38,21 +40,37 @@ function isSupportedNodeVersion(version: ParsedNodeVersion): boolean {
 }
 
 export function assertNodeVersion(io: NodeVersionGuardIO): boolean {
-	// Bun ships its own runtime; its node-compat version is unrelated to the user's Node.
-	if (process.versions.bun) {
-		return true;
+	const isBun =
+		!!process.versions.bun || typeof (globalThis as unknown as { Bun?: { version: string } }).Bun !== "undefined";
+	if (isBun) {
+		const bunVersionStr = io.version;
+		const version = parseVersion(bunVersionStr);
+		if (!version || isSupportedVersion(version, MIN_BUN_VERSION_PARTS)) {
+			return true;
+		}
+		io.log(`prime-agent requires Bun ${MIN_BUN_VERSION} or newer, but the active Bun is v${bunVersionStr}.`);
+		io.log("");
+		io.log(
+			`  1. Install Bun ${MIN_BUN_VERSION}+ (e.g. "curl -fsSL https://bun.sh/install | bash" or from https://bun.sh)`,
+		);
+		io.log("  2. Reinstall prime-agent under that Bun so the command resolves to it:");
+		io.log("     https://github.com/PrimeIntellect-ai/prime-agent/releases/latest");
+		io.exit(1);
+		return false;
 	}
 
-	const version = parseVersion(io.version);
-	if (!version || isSupportedNodeVersion(version)) {
-		return true;
-	}
-
-	io.log(`prime-agent requires Node ${MIN_NODE_VERSION} or newer, but the active Node is v${io.version}.`);
+	// Not running under Bun — Bun is required
+	io.log(`prime-agent requires Bun ${MIN_BUN_VERSION} or newer, but the active runtime is v${io.version} (not Bun).`);
 	io.log("");
-	io.log(`  1. Install Node ${MIN_NODE_VERSION}+ (e.g. "nvm install 22 && nvm use 22", or from https://nodejs.org)`);
-	io.log("  2. Reinstall prime-agent under that Node so the command resolves to it:");
+	io.log(
+		`  1. Install Bun ${MIN_BUN_VERSION}+ (e.g. "curl -fsSL https://bun.sh/install | bash" or from https://bun.sh)`,
+	);
+	io.log("  2. Reinstall prime-agent under that Bun so the command resolves to it:");
 	io.log("     https://github.com/PrimeIntellect-ai/prime-agent/releases/latest");
 	io.exit(1);
 	return false;
 }
+
+// Alias for new naming
+export const MIN_VERSION = MIN_BUN_VERSION;
+export const assertBunVersion = assertNodeVersion;
