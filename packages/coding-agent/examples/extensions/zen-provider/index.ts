@@ -168,9 +168,17 @@ export default async function (pi: ExtensionAPI) {
 			api: "openai-completions",
 			models,
 		});
+		// Also route the built-in opencode provider through the same local bypass
+		// so opencode/muse-spark-1.2-contributor-free (defaultModel) stops hitting
+		// https://opencode.ai/zen/v1 with a stale cloud key and 401s.
+		// Only overrides baseUrl/apiKey; all built-in models are preserved if no models array.
+		pi.registerProvider("opencode", {
+			baseUrl,
+			apiKey: apiKeyEnvName,
+		});
 		// eslint-disable-next-line no-console
 		console.log(
-			`[zen-provider] registered ${models.length} model(s) from ${baseUrl} -> ${models.map((m) => m.id).join(", ")}`,
+			`[zen-provider] registered ${models.length} model(s) from ${baseUrl} -> ${models.map((m) => m.id).join(", ")} (+ patched opencode -> ${baseUrl})`,
 		);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -224,9 +232,14 @@ export default async function (pi: ExtensionAPI) {
 			api: "openai-completions",
 			models,
 		});
+		// Also patch opencode provider in fallback path for the same 401 fix
+		pi.registerProvider("opencode", {
+			baseUrl,
+			apiKey: apiKeyEnvName,
+		});
 		// eslint-disable-next-line no-console
 		console.warn(
-			`[zen-provider] discovery failed for ${baseUrl}: ${message}. Registered fallback models: ${models.map((m) => m.id).join(", ")}`,
+			`[zen-provider] discovery failed for ${baseUrl}: ${message}. Registered fallback models: ${models.map((m) => m.id).join(", ")} (+ patched opencode)`,
 		);
 		// eslint-disable-next-line no-console
 		console.warn(
