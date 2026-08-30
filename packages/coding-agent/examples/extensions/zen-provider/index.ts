@@ -43,7 +43,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const PROVIDER_ID = "zen";
 const PROVIDER_NAME = "Zen (Local)";
 
-const DEFAULT_BASE_URL = "http://localhost:4096/v1";
+const DEFAULT_BASE_URL = "http://localhost:3000/v1";
 
 // Env vars checked in order for baseUrl
 const BASE_URL_ENV_VARS = [
@@ -175,7 +175,34 @@ export default async function (pi: ExtensionAPI) {
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		// Fallback: register static models so provider is still usable offline / before zen is running
+		// Include muse-spark so it appears even when discovery fails (offline)
 		models = [
+			{
+				id: "muse-spark-1.2",
+				name: "Muse Spark 1.2 (Zen Local)",
+				reasoning: false,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 200000,
+				maxTokens: 16384,
+				compat: {
+					supportsDeveloperRole: false,
+					supportsReasoningEffort: false,
+				},
+			},
+			{
+				id: "muse-spark-1.2-contributor-free",
+				name: "Muse Spark 1.2 Contributor Free (Zen Local)",
+				reasoning: false,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 200000,
+				maxTokens: 16384,
+				compat: {
+					supportsDeveloperRole: false,
+					supportsReasoningEffort: false,
+				},
+			},
 			{
 				id: "zen-free",
 				name: "Zen Free (local fallback)",
@@ -184,19 +211,6 @@ export default async function (pi: ExtensionAPI) {
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow: 128000,
 				maxTokens: 8192,
-				compat: {
-					supportsDeveloperRole: false,
-					supportsReasoningEffort: false,
-				},
-			},
-			{
-				id: "zen-think",
-				name: "Zen Think (local fallback)",
-				reasoning: true,
-				input: ["text", "image"],
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 200000,
-				maxTokens: 16384,
 				compat: {
 					supportsDeveloperRole: false,
 					supportsReasoningEffort: false,
