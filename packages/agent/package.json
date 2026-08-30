@@ -11,10 +11,10 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "tsgo -p tsconfig.build.json",
-		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"test": "vitest --run",
-		"prepublishOnly": "npm run clean && npm run build"
+		"build": "bunx tsgo -p tsconfig.build.json",
+		"dev": "bunx tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "bunx vitest --run",
+		"prepublishOnly": "bun run clean && bun run build"
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "^0.8.1",
@@ -35,7 +35,7 @@
 		"directory": "packages/agent"
 	},
 	"engines": {
-		"node": ">=20.0.0"
+		"bun": ">=1.2.0"
 	},
 	"devDependencies": {
 		"@types/node": "^24.3.0",

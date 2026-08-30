@@ -10,27 +10,27 @@
 		"packages/coding-agent/examples/extensions/sandbox"
 	],
 	"scripts": {
-		"clean": "npm run clean --workspaces",
-		"build": "cd packages/tui && npm run build && cd ../ai && npm run build && cd ../agent && npm run build && cd ../coding-agent && npm run build",
-		"dev": "concurrently --names \"ai,agent,coding-agent,tui\" --prefix-colors \"cyan,yellow,red,magenta\" \"cd packages/ai && npm run dev\" \"cd packages/agent && npm run dev\" \"cd packages/coding-agent && npm run dev\" \"cd packages/tui && npm run dev\"",
-		"dev:tsc": "cd packages/ai && npm run dev:tsc",
-		"check": "biome check --write --error-on-warnings . && tsgo --noEmit && npm run check:installer && npm run check:browser-smoke",
-		"check:installer": "node scripts/check-installer-render.mjs",
-		"check:browser-smoke": "node scripts/check-browser-smoke.mjs",
-		"profile:tui": "node scripts/profile-coding-agent-node.mjs --mode tui",
-		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
-		"test": "npm run test --workspaces --if-present",
-		"version:patch": "npm version patch -ws --no-git-tag-version && node scripts/sync-versions.js && shx rm -rf node_modules packages/*/node_modules package-lock.json && npm install",
-		"version:minor": "npm version minor -ws --no-git-tag-version && node scripts/sync-versions.js && shx rm -rf node_modules packages/*/node_modules package-lock.json && npm install",
-		"version:major": "npm version major -ws --no-git-tag-version && node scripts/sync-versions.js && shx rm -rf node_modules packages/*/node_modules package-lock.json && npm install",
-		"version:set": "npm version -ws",
-		"prepublishOnly": "npm run clean && npm run build && npm run check",
-		"publish": "npm run prepublishOnly && npm publish -ws --access public",
-		"publish:dry": "npm run prepublishOnly && npm publish -ws --access public --dry-run",
-		"release:pack": "node scripts/pack-prime-agent-release.mjs",
-		"release:patch": "node scripts/release.mjs patch",
-		"release:minor": "node scripts/release.mjs minor",
-		"release:major": "node scripts/release.mjs major",
+		"clean": "cd packages/tui && bun run clean && cd ../ai && bun run clean && cd ../agent && bun run clean && cd ../coding-agent && bun run clean",
+		"build": "cd packages/tui && bun run build && cd ../ai && bun run build && cd ../agent && bun run build && cd ../coding-agent && bun run build",
+		"dev": "concurrently --names \"ai,agent,coding-agent,tui\" --prefix-colors \"cyan,yellow,red,magenta\" \"cd packages/ai && bun run dev\" \"cd packages/agent && bun run dev\" \"cd packages/coding-agent && bun run dev\" \"cd packages/tui && bun run dev\"",
+		"dev:tsc": "cd packages/ai && bun run dev:tsc",
+		"check": "bunx biome check --write --error-on-warnings . && bunx tsgo --noEmit && bun run check:installer && bun run check:browser-smoke",
+		"check:installer": "bun scripts/check-installer-render.mjs",
+		"check:browser-smoke": "bun scripts/check-browser-smoke.mjs",
+		"profile:tui": "bun scripts/profile-coding-agent-node.mjs --mode tui",
+		"profile:rpc": "bun scripts/profile-coding-agent-node.mjs --mode rpc",
+		"test": "cd packages/tui && bun run test && cd ../ai && bun run test && cd ../agent && bun run test && cd ../coding-agent && bun run test",
+		"version:patch": "bun scripts/bump-versions.mjs patch && bun scripts/sync-versions.js && rm -rf node_modules packages/*/node_modules bun.lockb package-lock.json && bun install",
+		"version:minor": "bun scripts/bump-versions.mjs minor && bun scripts/sync-versions.js && rm -rf node_modules packages/*/node_modules bun.lockb package-lock.json && bun install",
+		"version:major": "bun scripts/bump-versions.mjs major && bun scripts/sync-versions.js && rm -rf node_modules packages/*/node_modules bun.lockb package-lock.json && bun install",
+		"version:set": "bun scripts/bump-versions.mjs",
+		"prepublishOnly": "bun run clean && bun run build && bun run check",
+		"publish": "bun run prepublishOnly && bun --filter '*' publish --access public",
+		"publish:dry": "bun run prepublishOnly && bun --filter '*' publish --access public --dry-run",
+		"release:pack": "bun scripts/pack-prime-agent-release.mjs",
+		"release:patch": "bun scripts/release.mjs patch",
+		"release:minor": "bun scripts/release.mjs minor",
+		"release:major": "bun scripts/release.mjs major",
 		"prepare": "husky"
 	},
 	"devDependencies": {
@@ -43,11 +43,20 @@
 		"jiti": "^2.7.0",
 		"shx": "^0.4.0",
 		"tsx": "^4.23.1",
-		"typescript": "^7.0.2"
+		"typescript": "^7.0.2",
+		"@types/bun": "^1.2.0",
+		"esbuild": "^0.28.1"
 	},
 	"engines": {
-		"node": ">=22.8.0"
+		"bun": ">=1.2.0"
 	},
+	"packageManager": "bun@1.4.0",
+	"trustedDependencies": [
+		"@earendil-works/pi-coding-agent",
+		"@google/genai",
+		"koffi",
+		"protobufjs"
+	],
 	"version": "0.8.1",
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "^0.8.1",

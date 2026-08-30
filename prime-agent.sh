@@ -62,20 +62,24 @@ if [[ "$NO_ENV" == "true" ]]; then
   echo "Running Prime Agent without API keys..."
 fi
 
-# --dist runs the bundled build (what users get; ~3x faster startup than tsx).
+# --dist runs the bundled build (what users get; ~3x faster startup).
 if [[ "$USE_DIST" == "true" ]]; then
   BUNDLE="$SCRIPT_DIR/packages/coding-agent/dist/bundle/cli.js"
   if [[ ! -f "$BUNDLE" ]]; then
-    echo "Bundle not found at $BUNDLE. Run npm run build first." >&2
+    echo "Bundle not found at $BUNDLE. Run bun run build first." >&2
     exit 1
   fi
-  exec node "$BUNDLE" ${ARGS[@]+"${ARGS[@]}"}
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "bun not found. Install bun: curl -fsSL https://bun.sh/install | bash" >&2
+    exit 1
+  fi
+  exec bun run "$BUNDLE" ${ARGS[@]+"${ARGS[@]}"}
 fi
 
-TSX_BIN="$SCRIPT_DIR/node_modules/.bin/tsx"
-if [[ ! -x "$TSX_BIN" ]]; then
-  echo "tsx not found at $TSX_BIN. Run npm install from the repo root first." >&2
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun not found. Install bun: curl -fsSL https://bun.sh/install | bash" >&2
+  echo "Run bun install from the repo root first." >&2
   exit 1
 fi
 
-"$TSX_BIN" "$SCRIPT_DIR/packages/coding-agent/src/cli.ts" ${ARGS[@]+"${ARGS[@]}"}
+exec bun --bun "$SCRIPT_DIR/packages/coding-agent/src/cli.ts" ${ARGS[@]+"${ARGS[@]}"}

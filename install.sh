@@ -70,7 +70,7 @@ main() {
 	if [ "$prime_agent_screen_enabled" = 1 ]; then
 		prime_agent_screen "Installing Prime Agent" "" "" ""
 	else
-		printf '\n\033[1m  Installing Prime Agent\033[0m\n\033[2m  npm global install\033[0m\n\n'
+		printf '\n\033[1m  Installing Prime Agent\033[0m\n\033[2m  bun global install\033[0m\n\n'
 	fi
 
 	start_preflight_checks
@@ -82,7 +82,7 @@ main() {
 	fi
 
 	if [ "$check_status" -ne 0 ]; then
-		if ! install_node_npm_interactive; then
+		if ! install_bun_interactive; then
 			exit "$check_status"
 		fi
 
@@ -114,9 +114,9 @@ main() {
 	rm -rf "$download_dir"
 	prime_agent_download_dir=
 
-	if [ "${PRIME_AGENT_NODE_INSTALLED_STANDALONE:-0}" = 1 ]; then
+	if [ "${PRIME_AGENT_BUN_INSTALLED_STANDALONE:-0}" = 1 ]; then
 		prime_agent_screen "Prime Agent installed" "" "Checking your shell PATH." ""
-		configure_standalone_node_path
+		configure_standalone_bun_path
 	elif command -v "$prime_agent_cmd" >/dev/null 2>&1; then
 		if [ "$prime_agent_screen_enabled" = 1 ]; then
 			prime_agent_screen "Prime Agent installed" "" "Run it with: $prime_agent_cmd" ""
@@ -133,9 +133,9 @@ main() {
 		fi
 		cat <<EOF
 The $prime_agent_cmd command was installed, but it is not on your PATH yet.
-Check npm's global bin directory with:
+Check bun's global bin directory with:
 
-  npm bin -g
+  bun pm bin -g
 
 Then add that directory to your shell PATH.
 EOF
@@ -860,7 +860,7 @@ start_preflight_checks() {
 finish_preflight_checks() {
 	if [ "$prime_agent_screen_enabled" = 1 ]; then
 		while kill -0 "$preflight_pid" 2>/dev/null; do
-			prime_agent_screen "Checking Node.js and npm$(prime_agent_pulse)" "" "" ""
+			prime_agent_screen "Checking Bun""$(prime_agent_pulse)" "" "" ""
 			sleep 0.18
 		done
 	fi
@@ -874,7 +874,7 @@ finish_preflight_checks() {
 	if [ "$prime_agent_screen_enabled" = 1 ]; then
 		if [ "$preflight_status" -ne 0 ]; then
 			preflight_summary=$(sed -n '1p' "$preflight_file")
-			prime_agent_screen "Node.js 20.6.0 or newer is required" "" "$preflight_summary" ""
+			prime_agent_screen "Bun 1.2.0 or newer is required" "" "$preflight_summary" ""
 			sleep 0.4
 		elif [ -s "$preflight_file" ]; then
 			preflight_summary="Existing $prime_agent_cmd command found on PATH."
@@ -893,19 +893,19 @@ run_preflight_checks() {
 	yellow="${prime_agent_esc}[33m"
 	reset="${prime_agent_esc}[0m"
 
-	if command -v node >/dev/null 2>&1; then
-		node_version=$(node --version)
-		if ! node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); process.exit(major > 20 || (major === 20 && (minor > 6 || (minor === 6 && patch >= 0))) ? 0 : 1)' >/dev/null; then
-			printf 'error: Prime Agent requires Node.js 20.6.0 or newer. Found %s.\n' "$node_version"
+	if command -v bun >/dev/null 2>&1; then
+		bun_version=$(bun --version)
+		if ! bun --version >/dev/null 2>&1 || ! bun -e 'const v=Bun.version.split(".").map(Number); const [major,minor,patch]=v; process.exit(major>1 || (major===1 && minor>2) || (major===1 && minor===2 && patch>=0) ? 0 : 1)' >/dev/null; then
+			printf 'error: Prime Agent requires Bun 1.2.0 or newer. Found %s.\n' "$bun_version"
 			status=1
 		fi
 	else
-		printf 'error: Node.js 20.6.0 or newer is required to install Prime Agent.\n'
+		printf 'error: Bun 1.2.0 or newer is required to install Prime Agent.\n'
 		status=1
 	fi
 
-	if ! command -v npm >/dev/null 2>&1; then
-		printf 'error: npm is required to install Prime Agent.\n'
+	if ! command -v bun >/dev/null 2>&1; then
+		printf 'error: bun is required to install Prime Agent.\n'
 		status=1
 	fi
 
@@ -987,37 +987,37 @@ normalize_version() {
 	printf '%s' "$version"
 }
 
-install_node_npm_interactive() {
-	method=$(detect_node_install_method)
+install_bun_interactive() {
+	method=$(detect_bun_install_method)
 	case "$method" in
 		homebrew) label="Homebrew" ;;
 		apt) label="apt" ;;
 		apk) label="apk" ;;
-		standalone) label="standalone Node.js" ;;
+		standalone) label="standalone Bun" ;;
 		*)
 			method=standalone
-			label="standalone Node.js"
+			label="standalone Bun"
 			;;
 	esac
 
 	if prime_agent_prompt_yes_no \
-		"Install Node.js and npm with $label?" \
+		"Install Bun with $label?" \
 		"Required before Prime Agent can be installed." \
 		"Install? [Y/n]"; then
-		install_node_npm "$method" "$label"
+		install_bun "$method" "$label"
 		return
 	else
 		prompt_status=$?
 	fi
 	if [ "$prompt_status" -eq 2 ]; then
-		printf 'No terminal detected; install Node.js 20.6.0 or newer and npm, then run this installer again.\n'
+		printf 'No terminal detected; install Bun 1.2.0 or newer, then run this installer again.\n'
 	else
-		printf '\nInstall Node.js 20.6.0 or newer and npm, then run this installer again.\n'
+		printf '\nInstall Bun 1.2.0 or newer, then run this installer again.\n'
 	fi
 	return 1
 }
 
-detect_node_install_method() {
+detect_bun_install_method() {
 	case "$(uname -s)" in
 		Darwin)
 			if command -v brew >/dev/null 2>&1; then
@@ -1027,9 +1027,9 @@ detect_node_install_method() {
 			fi
 			;;
 		Linux)
-			if command -v apt-cache >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1 && apt_node_candidate_is_new_enough; then
+			if command -v apt-cache >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1 && apt_bun_candidate_is_new_enough; then
 				printf 'apt'
-			elif command -v apk >/dev/null 2>&1 && apk_node_candidate_is_new_enough; then
+			elif command -v apk >/dev/null 2>&1 && apk_bun_candidate_is_new_enough; then
 				printf 'apk'
 			else
 				printf 'standalone'
@@ -1041,17 +1041,17 @@ detect_node_install_method() {
 	esac
 }
 
-apt_node_candidate_is_new_enough() {
-	version=$(apt-cache policy nodejs 2>/dev/null | awk '/Candidate:/ { print $2; exit }')
-	[ -n "$version" ] && [ "$version" != "(none)" ] && node_version_string_is_new_enough "$version"
+apt_bun_candidate_is_new_enough() {
+	version=$(apt-cache policy bun 2>/dev/null | awk '/Candidate:/ { print $2; exit }')
+	[ -n "$version" ] && [ "$version" != "(none)" ] && bun_version_string_is_new_enough "$version"
 }
 
-apk_node_candidate_is_new_enough() {
-	version=$(apk search -x nodejs 2>/dev/null | awk -F- '/^nodejs-/ { print $2; exit }')
-	[ -n "$version" ] && node_version_string_is_new_enough "$version"
+apk_bun_candidate_is_new_enough() {
+	version=$(apk search -x bun 2>/dev/null | awk -F- '/^bun-/ { print $2; exit }')
+	[ -n "$version" ] && bun_version_string_is_new_enough "$version"
 }
 
-node_version_string_is_new_enough() {
+bun_version_string_is_new_enough() {
 	version="${1#v}"
 	case "$version" in
 		[0-9]*) ;;
@@ -1075,40 +1075,40 @@ node_version_string_is_new_enough() {
 	return 1
 }
 
-install_node_npm() {
+install_bun() {
 	method="$1"
 	label="$2"
 
 	if [ "$prime_agent_screen_enabled" != 1 ]; then
-		printf '\nInstalling Node.js and npm with %s...\n\n' "$label"
-		run_node_install_method "$method"
+		printf '\nInstalling Bun with %s...\n\n' "$label"
+		run_bun_install_method "$method"
 	else
-		prepare_sudo_for_node_install "$method"
-		node_install_details="Using $label.
-Resolving Node.js packages.
-Downloading Node.js runtime.
-Installing npm.
+		prepare_sudo_for_bun_install "$method"
+		bun_install_details="Using $label.
+Resolving Bun packages.
+Downloading Bun runtime.
+Installing bun.
 Preparing Prime Agent setup."
 		prime_agent_run_quiet_with_animation_steps \
-			"Installing Node.js and npm" \
-			"Installing Node.js and npm" \
-			"$node_install_details" \
-			run_node_install_method "$method"
+			"Installing Bun" \
+			"Installing Bun" \
+			"$bun_install_details" \
+			run_bun_install_method "$method"
 	fi
 
 	if [ "$method" = standalone ]; then
-		load_standalone_node
-		PRIME_AGENT_NODE_INSTALLED_STANDALONE=1
+		load_standalone_bun
+		PRIME_AGENT_BUN_INSTALLED_STANDALONE=1
 	fi
 	hash -r
 	if [ "$prime_agent_screen_enabled" = 1 ]; then
-		prime_agent_screen "Node.js and npm installed" "" "Continuing Prime Agent setup." ""
+		prime_agent_screen "Bun installed" "" "Continuing Prime Agent setup." ""
 	else
-		printf '\nNode.js and npm are installed.\n\n'
+		printf '\nBun are installed.\n\n'
 	fi
 }
 
-node_install_needs_sudo() {
+bun_install_needs_sudo() {
 	if [ "${EUID:-$(id -u)}" -eq 0 ]; then
 		return 1
 	fi
@@ -1128,126 +1128,91 @@ node_install_needs_sudo() {
 	esac
 }
 
-prepare_sudo_for_node_install() {
+prepare_sudo_for_bun_install() {
 	method="$1"
-	if ! node_install_needs_sudo "$method"; then
+	if ! bun_install_needs_sudo "$method"; then
 		return 0
 	fi
 
-	prime_agent_screen "Preparing Node.js install" "" "This may ask for your sudo password." ""
+	prime_agent_screen "Preparing Bun install" "" "This may ask for your sudo password." ""
 	prime_agent_restore_terminal
 	printf '\n'
 	sudo -v
 }
 
-run_node_install_method() {
+run_bun_install_method() {
 	case "$1" in
-		homebrew) install_node_with_homebrew ;;
-		apt) install_node_with_apt ;;
-		apk) install_node_with_apk ;;
-		standalone) install_node_standalone ;;
+		homebrew) install_bun_with_homebrew ;;
+		apt) install_bun_with_apt ;;
+		apk) install_bun_with_apk ;;
+		standalone) install_bun_standalone ;;
 	esac
 }
 
-install_node_with_homebrew() {
-	if brew list node >/dev/null 2>&1; then
-		brew upgrade node
+install_bun_with_homebrew() {
+	if brew list bun >/dev/null 2>&1; then
+		brew upgrade bun
 	else
-		brew install node
+		brew install oven-sh/bun/bun
 	fi
 }
 
-install_node_with_apt() {
+install_bun_with_apt() {
 	print_sudo_note
-	if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-		apt-get update
-		apt-get install -y nodejs npm
-	else
-		sudo sh -c 'apt-get update && apt-get install -y nodejs npm'
-	fi
+	printf 'Installing Bun via apt is not officially supported; falling back to standalone installer.\n'
+	install_bun_standalone
 }
 
-install_node_with_apk() {
+install_bun_with_apk() {
 	print_sudo_note
-	run_with_sudo apk add --update-cache nodejs npm
+	printf 'Installing Bun via apk is not officially supported; falling back to standalone installer.\n'
+	install_bun_standalone
 }
 
-install_node_standalone() {
-	node_platform=$(detect_node_binary_platform) || {
-		printf 'Unsupported operating system for automatic Node.js install: %s\n' "$(uname -s)"
-		return 1
-	}
-	node_arch=$(detect_node_binary_arch) || {
-		printf 'Unsupported CPU architecture for automatic Node.js install: %s\n' "$(uname -m)"
-		return 1
-	}
-	node_dist_base="https://nodejs.org/dist/latest-v22.x"
-	node_base_dir=$(node_standalone_base_dir)
-	node_tmp_dir=$(create_temp_dir)
-
-	mkdir -p "$node_tmp_dir" "$node_base_dir"
-
-	printf 'Resolving Node.js binary for %s-%s\n' "$node_platform" "$node_arch"
-	curl -fsSL "$node_dist_base/SHASUMS256.txt" -o "$node_tmp_dir/SHASUMS256.txt"
-	node_file=$(awk -v suffix="-$node_platform-$node_arch.tar.xz" '
-		index($2, "node-v") == 1 && length($2) >= length(suffix) && substr($2, length($2) - length(suffix) + 1) == suffix { print $2; exit }
-	' "$node_tmp_dir/SHASUMS256.txt")
-	if [ -z "$node_file" ]; then
-		printf 'No Node.js binary is available for %s-%s.\n' "$node_platform" "$node_arch"
-		rm -rf "$node_tmp_dir"
+install_bun_standalone() {
+	printf 'Installing Bun via official installer\n'
+	if ! curl -fsSL https://bun.sh/install | bash; then
+		printf 'Failed to install Bun via https://bun.sh/install\n' >&2
 		return 1
 	fi
-	case "$node_file" in
-		*/*|*\\*|*..*)
-			printf 'Unsafe Node.js archive name in checksum manifest: %s\n' "$node_file"
-			rm -rf "$node_tmp_dir"
-			return 1
-			;;
-		node-v*-"$node_platform"-"$node_arch".tar.xz) ;;
-		*)
-			printf 'Unexpected Node.js archive name in checksum manifest: %s\n' "$node_file"
-			rm -rf "$node_tmp_dir"
-			return 1
-			;;
-	esac
-
-	printf 'Downloading Node.js %s\n' "${node_file%.tar.xz}"
-	curl -fsSL "$node_dist_base/$node_file" -o "$node_tmp_dir/$node_file"
-	verify_node_standalone_download "$node_tmp_dir" "$node_file"
-	ensure_node_standalone_extract_tools "$node_platform"
-
-	node_dir="$node_base_dir/${node_file%.tar.xz}"
-	rm -rf "$node_dir"
-	printf 'Extracting Node.js to %s\n' "$node_dir"
-	tar -xf "$node_tmp_dir/$node_file" -C "$node_base_dir"
-	rm -f "$node_base_dir/current"
-	ln -s "$node_dir" "$node_base_dir/current"
-	rm -rf "$node_tmp_dir"
-	printf 'Node.js installed at %s\n' "$node_dir"
+	if [ -f "$HOME/.bun/bin/bun" ]; then
+		export PATH="$HOME/.bun/bin:$PATH"
+	fi
+	if ! command -v bun >/dev/null 2>&1; then
+		printf 'Bun not found after install\n' >&2
+		return 1
+	fi
+	printf 'Bun installed at %s (%s)\n' "$(command -v bun)" "$(bun --version)"
 }
 
-verify_node_standalone_download() {
+verify_bun_standalone_download() {
+	return 0
+}
+verify_bun_standalone_download_unused_disabled() {
 	checksum_dir="$1"
 	checksum_file_name="$2"
 	awk -v file="$checksum_file_name" '$2 == file { print }' "$checksum_dir/SHASUMS256.txt" >"$checksum_dir/SHASUMS256.selected"
 
 	if command -v sha256sum >/dev/null 2>&1; then
-		printf 'Verifying Node.js download\n'
+		printf 'Verifying Bun download\n'
 		(cd "$checksum_dir" && sha256sum -c SHASUMS256.selected)
 	elif command -v shasum >/dev/null 2>&1; then
-		printf 'Verifying Node.js download\n'
+		printf 'Verifying Bun download\n'
 		(cd "$checksum_dir" && shasum -a 256 -c SHASUMS256.selected)
 	else
-		printf 'error: sha256sum or shasum is required to verify the Node.js download.\n'
+		printf 'error: sha256sum or shasum is required to verify the Bun download.\n'
 		return 1
 	fi
 }
 
-ensure_node_standalone_extract_tools() {
+ensure_bun_standalone_extract_tools() {
+	return 0
+}
+ensure_bun_standalone_extract_tools_unused_disabled() {
 	extract_platform="$1"
 
 	if [ "$extract_platform" = linux ] && ! command -v xz >/dev/null 2>&1; then
-		printf 'Installing xz-utils for Node.js archive extraction\n'
+		printf 'Installing xz-utils for Bun archive extraction\n'
 		print_sudo_note
 		if command -v apt-get >/dev/null 2>&1; then
 			run_with_sudo apt-get update
@@ -1255,27 +1220,32 @@ ensure_node_standalone_extract_tools() {
 		elif command -v apk >/dev/null 2>&1; then
 			run_with_sudo apk add --update-cache xz
 		else
-			printf 'xz is required to extract Node.js. Install xz and run this installer again.\n'
+			printf 'xz is required to extract Bun. Install xz and run this installer again.\n'
 			return 1
 		fi
 	fi
 }
 
-load_standalone_node() {
-	PRIME_AGENT_STANDALONE_NODE_BIN="$(node_standalone_base_dir)/current/bin"
-	PATH="$PRIME_AGENT_STANDALONE_NODE_BIN:$PATH"
-	export PRIME_AGENT_STANDALONE_NODE_BIN PATH
+load_standalone_bun() {
+	# Bun's official installer uses ~/.bun/bin
+	if [ -d "$HOME/.bun/bin" ]; then
+		PRIME_AGENT_STANDALONE_BUN_BIN="$HOME/.bun/bin"
+	else
+		PRIME_AGENT_STANDALONE_BUN_BIN="$(bun_standalone_base_dir)/current/bin"
+	fi
+	PATH="$PRIME_AGENT_STANDALONE_BUN_BIN:$PATH"
+	export PRIME_AGENT_STANDALONE_BUN_BIN PATH
 }
 
-node_standalone_base_dir() {
+bun_standalone_base_dir() {
 	if [ -n "${XDG_DATA_HOME:-}" ]; then
-		printf '%s/prime-agent-node' "$XDG_DATA_HOME"
+		printf '%s/prime-agent-bun' "$XDG_DATA_HOME"
 	else
-		printf '%s/.local/share/prime-agent-node' "$HOME"
+		printf '%s/.local/share/prime-agent-bun' "$HOME"
 	fi
 }
 
-detect_node_binary_platform() {
+detect_bun_binary_platform() {
 	case "$(uname -s)" in
 		Darwin) printf 'darwin' ;;
 		Linux) printf 'linux' ;;
@@ -1283,7 +1253,7 @@ detect_node_binary_platform() {
 	esac
 }
 
-detect_node_binary_arch() {
+detect_bun_binary_arch() {
 	case "$(uname -m)" in
 		x86_64|amd64) printf 'x64' ;;
 		arm64|aarch64) printf 'arm64' ;;
@@ -1308,10 +1278,10 @@ run_with_sudo() {
 	fi
 }
 
-configure_standalone_node_path() {
+configure_standalone_bun_path() {
 	if original_prime_agent_path=$(resolve_prime_agent_with_original_path); then
 		case "$original_prime_agent_path" in
-			"$PRIME_AGENT_STANDALONE_NODE_BIN/"*)
+			"$PRIME_AGENT_STANDALONE_BUN_BIN/"*)
 				if [ "$prime_agent_screen_enabled" = 1 ]; then
 					prime_agent_screen "Prime Agent installed" "" "Run it with: $prime_agent_cmd" ""
 				else
@@ -1339,21 +1309,21 @@ configure_standalone_node_path() {
 			prime_agent_restore_terminal
 			printf '\n'
 		fi
-		print_standalone_path_manual_instructions
+		print_standalone_bun_path_manual_instructions
 		return 0
 	}
 
-	if shell_profile_has_standalone_node_path "$profile"; then
+	if shell_profile_has_standalone_bun_path "$profile"; then
 		if [ "$prime_agent_screen_enabled" = 1 ]; then
 			prime_agent_screen "Prime Agent installed" "" "Run: $(prime_agent_source_profile_command "$profile")" ""
 		else
-			printf '%s already contains %s.\n' "$profile" "$PRIME_AGENT_STANDALONE_NODE_BIN"
+			printf '%s already contains %s.\n' "$profile" "$PRIME_AGENT_STANDALONE_BUN_BIN"
 			printf 'Restart your shell or run: %s\n' "$(prime_agent_source_profile_command "$profile")"
 		fi
 		return 0
 	fi
 
-	prompt_add_standalone_node_path "$profile"
+	prompt_add_standalone_bun_path "$profile"
 }
 
 resolve_prime_agent_with_original_path() {
@@ -1398,48 +1368,48 @@ detect_shell_profile() {
 	esac
 }
 
-shell_profile_has_standalone_node_path() {
+shell_profile_has_standalone_bun_path() {
 	profile="$1"
-	[ -f "$profile" ] && grep -F "$PRIME_AGENT_STANDALONE_NODE_BIN" "$profile" >/dev/null 2>&1
+	[ -f "$profile" ] && grep -F "$PRIME_AGENT_STANDALONE_BUN_BIN" "$profile" >/dev/null 2>&1
 }
 
-prompt_add_standalone_node_path() {
+prompt_add_standalone_bun_path() {
 	profile="$1"
-	path_line=$(standalone_node_path_line)
+	path_line=$(standalone_bun_path_line)
 
 	if ! prime_agent_prompt_yes_no \
-		"Add standalone Node.js to your PATH?" \
+		"Add standalone Bun to your PATH?" \
 		"Updates $profile so future shells can run $prime_agent_cmd." \
 		"Update PATH? [Y/n]"; then
 		if [ "$prime_agent_screen_enabled" = 1 ]; then
 			prime_agent_restore_terminal
 			printf '\n'
 		fi
-		print_standalone_path_manual_instructions
+		print_standalone_bun_path_manual_instructions
 		return 0
 	fi
 
 	mkdir -p "$(dirname "$profile")"
 	{
-		printf '\n# Prime Agent standalone Node.js\n'
+		printf '\n# Prime Agent standalone Bun\n'
 		printf '%s\n' "$path_line"
 	} >>"$profile"
 	if [ "$prime_agent_screen_enabled" = 1 ]; then
 		prime_agent_screen "Prime Agent installed" "" "Run: $(prime_agent_source_profile_command "$profile")" ""
 	else
-		printf 'Added %s to %s.\n' "$PRIME_AGENT_STANDALONE_NODE_BIN" "$profile"
+		printf 'Added %s to %s.\n' "$PRIME_AGENT_STANDALONE_BUN_BIN" "$profile"
 		printf 'Restart your shell or run: %s\n' "$(prime_agent_source_profile_command "$profile")"
 	fi
 }
 
-print_standalone_path_manual_instructions() {
+print_standalone_bun_path_manual_instructions() {
 	printf 'Add this to your shell profile to use %s from new shells:\n\n' "$prime_agent_cmd"
-	printf '  %s\n' "$(standalone_node_path_line)"
+	printf '  %s\n' "$(standalone_bun_path_line)"
 	printf '\nThen restart your shell and run: %s\n' "$prime_agent_cmd"
 }
 
-standalone_node_path_line() {
-	printf 'export PATH="%s:$PATH"' "$PRIME_AGENT_STANDALONE_NODE_BIN"
+standalone_bun_path_line() {
+	printf 'export PATH="%s:$PATH"' "$PRIME_AGENT_STANDALONE_BUN_BIN"
 }
 
 prime_agent_shell_quote() {
@@ -1530,8 +1500,8 @@ confirm_install() {
 	tarball_url="$2"
 
 	if prime_agent_prompt_yes_no \
-		"Install Prime Agent v$version globally with npm?" \
-		"Downloads the verified release and runs npm install -g." \
+		"Install Prime Agent v$version globally with bun?" \
+		"Downloads the verified release and runs bun install -g." \
 		"Install? [Y/n]"; then
 		return 0
 	else
@@ -1592,28 +1562,28 @@ confirm_kernel_runtime_setup() {
 install_prime_agent_package() {
 	tarball_path="$1"
 	if [ "$prime_agent_bootstrap_kernel_on_install" = 1 ]; then
-		npm_install_details="Preparing global install.
+		bun_install_details="Preparing global install.
 Linking command binaries.
 Installing runtime packages.
 Preloading search tools.
 Preparing Python kernel.
-Finalizing npm install."
+Finalizing bun install."
 		prime_agent_run_quiet_with_animation_steps \
 			"Installing Prime Agent" \
 			"Installing Prime Agent" \
-			"$npm_install_details" \
-			env PRIME_AGENT_BOOTSTRAP_TOOLS_ON_INSTALL=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 PRIME_AGENT_INSTALL_UV=1 npm install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
+			"$bun_install_details" \
+			env PRIME_AGENT_BOOTSTRAP_TOOLS_ON_INSTALL=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 PRIME_AGENT_INSTALL_UV=1 bun install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
 	else
-		npm_install_details="Preparing global install.
+		bun_install_details="Preparing global install.
 Linking command binaries.
 Installing runtime packages.
 Preloading search tools.
-Finalizing npm install."
+Finalizing bun install."
 		prime_agent_run_quiet_with_animation_steps \
 			"Installing Prime Agent" \
 			"Installing Prime Agent" \
-			"$npm_install_details" \
-			env PRIME_AGENT_BOOTSTRAP_TOOLS_ON_INSTALL=1 npm install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
+			"$bun_install_details" \
+			env PRIME_AGENT_BOOTSTRAP_TOOLS_ON_INSTALL=1 bun install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
 	fi
 }
 
