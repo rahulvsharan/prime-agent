@@ -106,7 +106,12 @@ type DiscoveredModel = {
 
 async function discoverModels(baseUrl: string, apiKey: string): Promise<DiscoveredModel[]> {
 	const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-	const headers: Record<string, string> = { "Content-Type": "application/json" };
+	// Use identity encoding to avoid BrotliDecompressionError on some local gateways (e.g. opencode :3000)
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		Accept: "application/json",
+		"Accept-Encoding": "identity",
+	};
 	// Local bypasses often ignore auth, but send header if we have a non-dummy key
 	if (apiKey && apiKey !== "zen-local-dummy" && !apiKey.startsWith("!")) {
 		// If apiKey looks like an env var name, resolve it; otherwise use directly
