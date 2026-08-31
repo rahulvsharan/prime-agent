@@ -38,6 +38,15 @@
  *   ZEN_BASE_URL=http://localhost:4096/v1 prime-agent --provider zen --model zen-free -p "hello"
  */
 
+import {
+	type AssistantMessage,
+	type AssistantMessageEventStream,
+	type Context,
+	calculateCost,
+	createAssistantMessageEventStream,
+	type Model,
+	type SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const PROVIDER_ID = "zen";
@@ -103,6 +112,288 @@ type DiscoveredModel = {
 	contextWindow?: number;
 	maxTokens?: number;
 };
+
+function toOpenAIMessages(context: Context): Array<Record<string, unknown>> {
+	const out: Array<Record<string, unknown>> = [];
+	if (context.systemPrompt) out.push({ role: "system", content: context.systemPrompt });
+	for (const msg of context.messages) {
+		if (msg.role === "user") {
+			if (typeof msg.content === "string") out.push({ role: "user", content: msg.content });
+			else {
+				const content = (
+					msg.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>
+				).map((p) =>
+					p.type === "text"
+						? { type: "text", text: p.text }
+						: { type: "image_url", image_url: { url: `data:${p.mimeType};base64,${p.data}` } },
+				);
+				out.push({ role: "user", content });
+			}
+		} else if (msg.role === "assistant") {
+			const text = (msg.content as Array<{ type: string; text?: string }>)
+				.filter((b) => b.type === "text" && b.text?.trim())
+				.map((b) => b.text)
+				.join("");
+			const toolCalls = (msg.content as Array<{ type: string; id?: string; name?: string; arguments?: unknown }>)
+				.filter((b) => b.type === "toolCall")
+				.map((b) => ({
+					id: b.id,
+					type: "function",
+					function: { name: b.name, arguments: JSON.stringify(b.arguments ?? {}) },
+				}));
+			const entry: Record<string, unknown> = { role: "assistant", content: text || null };
+			if (toolCalls.length) entry.tool_calls = toolCalls;
+			// skip empty assistant without tool_calls (aborted)
+			if (!text && !toolCalls.length) continue;
+			out.push(entry);
+		} else if (msg.role === "toolResult") {
+			const text = (msg.content as Array<{ type: string; text?: string }>)
+				.filter((b) => b.type === "text")
+				.map((b) => b.text)
+				.join("\n");
+			out.push({ role: "tool", tool_call_id: (msg as { toolCallId: string }).toolCallId, content: text || "" });
+		}
+	}
+	return out;
+}
+
+function streamZenLocal(
+	model: Model<string>,
+	context: Context,
+	options?: SimpleStreamOptions,
+): AssistantMessageEventStream {
+	const stream = createAssistantMessageEventStream();
+	(async () => {
+		const output: AssistantMessage = {
+			role: "assistant",
+			content: [],
+			api: model.api as string,
+			provider: model.provider,
+			model: model.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: Date.now(),
+		};
+		try {
+			stream.push({ type: "start", partial: output });
+			const messages = toOpenAIMessages(context);
+			const body = JSON.stringify({
+				model: model.id,
+				messages,
+				stream: true,
+				stream_options: { include_usage: true },
+			});
+			const res = await fetch(`${model.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "text/event-stream",
+					"Accept-Encoding": "identity",
+					// Deliberately NO Authorization — local Zen bypass (opencode :3000) serves free models without auth
+					// and fails with 401 if a dummy Bearer is sent (see curl laguna-s-2.1-free test)
+				},
+				body,
+				signal: options?.signal,
+			});
+			if (!res.ok) {
+				const t = await res.text().catch(() => "");
+				throw new Error(`Zen local ${res.status} ${t.slice(0, 500)}`);
+			}
+			if (!res.body) throw new Error("No response body");
+			const reader = res.body.getReader();
+			const decoder = new TextDecoder();
+			let buf = "";
+			// text and tool-call block tracking (mirrors openai-completions)
+			let textBlock: { type: "text"; text: string } | null = null;
+			const toolBlocks = new Map<
+				number,
+				{
+					type: "toolCall";
+					id: string;
+					name: string;
+					arguments: Record<string, unknown>;
+					partialArgs: string;
+					streamIndex: number;
+				}
+			>();
+			const toolById = new Map<string, typeof toolBlocks extends Map<number, infer V> ? V : never>();
+			const blocks = output.content as Array<{
+				type: string;
+				text?: string;
+				thinking?: string;
+				id?: string;
+				name?: string;
+				arguments?: unknown;
+				partialArgs?: string;
+				streamIndex?: number;
+			}>;
+			const getIdx = (b: unknown) => blocks.indexOf(b as never);
+			const ensureText = () => {
+				if (!textBlock) {
+					textBlock = { type: "text", text: "" };
+					blocks.push(textBlock as never);
+					stream.push({ type: "text_start", contentIndex: getIdx(textBlock), partial: output });
+				}
+				return textBlock;
+			};
+			const ensureTool = (delta: {
+				index?: number;
+				id?: string;
+				function?: { name?: string; arguments?: string };
+			}) => {
+				const idx = typeof delta.index === "number" ? delta.index : undefined;
+				let blk = idx !== undefined ? toolBlocks.get(idx) : undefined;
+				if (!blk && delta.id) blk = toolById.get(delta.id);
+				if (!blk) {
+					blk = {
+						type: "toolCall",
+						id: delta.id || "",
+						name: delta.function?.name || "",
+						arguments: {},
+						partialArgs: "",
+						streamIndex: idx ?? -1,
+					};
+					if (idx !== undefined) toolBlocks.set(idx, blk);
+					if (delta.id) toolById.set(delta.id, blk);
+					blocks.push(blk as never);
+					stream.push({ type: "toolcall_start", contentIndex: getIdx(blk), partial: output });
+				}
+				if (idx !== undefined && blk.streamIndex === -1) {
+					blk.streamIndex = idx;
+					toolBlocks.set(idx, blk);
+				}
+				if (delta.id) {
+					blk.id = delta.id;
+					toolById.set(delta.id, blk);
+				}
+				if (delta.function?.name) blk.name = delta.function.name;
+				return blk;
+			};
+			let done = false;
+			while (!done) {
+				const { value, done: rDone } = await reader.read();
+				if (rDone) break;
+				buf += decoder.decode(value, { stream: true });
+				const lines = buf.split("\n");
+				buf = lines.pop() || "";
+				for (const line of lines) {
+					const t = line.trim();
+					if (!t || !t.startsWith("data:")) continue;
+					const data = t.slice(5).trim();
+					if (data === "[DONE]") {
+						done = true;
+						break;
+					}
+					let chunk: {
+						id?: string;
+						model?: string;
+						usage?: { prompt_tokens?: number; completion_tokens?: number };
+						choices?: Array<{
+							finish_reason?: string;
+							delta?: {
+								content?: string;
+								reasoning_content?: string;
+								reasoning?: string;
+								tool_calls?: Array<{
+									index?: number;
+									id?: string;
+									function?: { name?: string; arguments?: string };
+								}>;
+							};
+						}>;
+					};
+					try {
+						chunk = JSON.parse(data);
+					} catch {
+						continue;
+					}
+					if (chunk.id) output.responseId ||= chunk.id;
+					if (chunk.model && chunk.model !== model.id) output.responseModel ||= chunk.model;
+					if (chunk.usage) {
+						output.usage.input = chunk.usage.prompt_tokens || 0;
+						output.usage.output = chunk.usage.completion_tokens || 0;
+						output.usage.totalTokens = output.usage.input + output.usage.output;
+						calculateCost(model as Model<string>, output.usage);
+					}
+					const choice = chunk.choices?.[0];
+					if (!choice) continue;
+					if (choice.finish_reason) {
+						if (choice.finish_reason === "tool_calls" || choice.finish_reason === "function_call")
+							output.stopReason = "toolUse";
+						else if (choice.finish_reason === "length") output.stopReason = "length";
+						else if (choice.finish_reason === "stop" || choice.finish_reason === "end")
+							output.stopReason = "stop";
+						else output.stopReason = "stop";
+					}
+					const delta = choice.delta;
+					if (!delta) continue;
+					if (delta.content && delta.content.length) {
+						const b = ensureText();
+						b.text += delta.content;
+						stream.push({ type: "text_delta", contentIndex: getIdx(b), delta: delta.content, partial: output });
+					}
+					const reasoning =
+						(delta as { reasoning_content?: string; reasoning?: string }).reasoning_content ||
+						(delta as { reasoning?: string }).reasoning;
+					if (reasoning && reasoning.length) {
+						// treat reasoning as text for free models without reasoning support
+						const b = ensureText();
+						b.text += reasoning;
+						stream.push({ type: "text_delta", contentIndex: getIdx(b), delta: reasoning, partial: output });
+					}
+					if (delta.tool_calls) {
+						for (const tc of delta.tool_calls) {
+							const blk = ensureTool(tc);
+							let d = "";
+							if (tc.function?.arguments) {
+								d = tc.function.arguments;
+								blk.partialArgs += d;
+								try {
+									blk.arguments = JSON.parse(blk.partialArgs);
+								} catch {
+									// keep partial
+								}
+							}
+							stream.push({ type: "toolcall_delta", contentIndex: getIdx(blk), delta: d, partial: output });
+						}
+					}
+				}
+			}
+			// finalize blocks
+			for (const b of [...blocks]) {
+				const idx = getIdx(b);
+				if (b.type === "text")
+					stream.push({ type: "text_end", contentIndex: idx, content: b.text || "", partial: output });
+				else if (b.type === "toolCall") {
+					try {
+						(b as { arguments: unknown; partialArgs: string }).arguments = JSON.parse(
+							(b as { partialArgs: string }).partialArgs || "{}",
+						);
+					} catch {}
+					delete (b as { partialArgs?: string }).partialArgs;
+					delete (b as { streamIndex?: number }).streamIndex;
+					stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: b as never, partial: output });
+				}
+			}
+			if (options?.signal?.aborted) throw new Error("Request was aborted");
+			stream.push({ type: "done", reason: output.stopReason as "stop" | "length" | "toolUse", message: output });
+			stream.end();
+		} catch (e) {
+			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+			output.errorMessage = e instanceof Error ? e.message : String(e);
+			stream.push({ type: "error", reason: output.stopReason as "aborted" | "error", error: output });
+			stream.end();
+		}
+	})();
+	return stream;
+}
 
 async function discoverModels(baseUrl: string, apiKey: string): Promise<DiscoveredModel[]> {
 	const url = `${baseUrl.replace(/\/+$/, "")}/models`;
@@ -172,18 +463,21 @@ export default async function (pi: ExtensionAPI) {
 			apiKey: apiKeyEnvName,
 			api: "openai-completions",
 			models,
+			streamSimple: streamZenLocal,
 		});
 		// Also route the built-in opencode provider through the same local bypass
 		// so opencode/muse-spark-1.2-contributor-free (defaultModel) stops hitting
 		// https://opencode.ai/zen/v1 with a stale cloud key and 401s.
-		// Only overrides baseUrl/apiKey; all built-in models are preserved if no models array.
+		// Uses same no-auth streaming — local :3000 serves free models without Authorization.
 		pi.registerProvider("opencode", {
 			baseUrl,
 			apiKey: apiKeyEnvName,
+			api: "openai-completions",
+			streamSimple: streamZenLocal,
 		});
 		// eslint-disable-next-line no-console
 		console.log(
-			`[zen-provider] registered ${models.length} model(s) from ${baseUrl} -> ${models.map((m) => m.id).join(", ")} (+ patched opencode -> ${baseUrl})`,
+			`[zen-provider] registered ${models.length} model(s) from ${baseUrl} -> ${models.map((m) => m.id).join(", ")} (+ patched opencode -> ${baseUrl} no-auth)`,
 		);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -236,11 +530,14 @@ export default async function (pi: ExtensionAPI) {
 			apiKey: apiKeyEnvName,
 			api: "openai-completions",
 			models,
+			streamSimple: streamZenLocal,
 		});
 		// Also patch opencode provider in fallback path for the same 401 fix
 		pi.registerProvider("opencode", {
 			baseUrl,
 			apiKey: apiKeyEnvName,
+			api: "openai-completions",
+			streamSimple: streamZenLocal,
 		});
 		// eslint-disable-next-line no-console
 		console.warn(
